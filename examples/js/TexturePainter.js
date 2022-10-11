@@ -173,7 +173,7 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 		var height = scope.canvas.height;
 		var length = vectors.length / 2;
 
-		scope.ctx.fillStyle = "rgba( 14, 158, 54, 0.2 )";
+		scope.ctx.fillStyle = "rgba( 14, 158, 54, 1 )";
 
 		// move to the first point
 		scope.ctx.beginPath();
