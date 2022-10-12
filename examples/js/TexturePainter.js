@@ -10,7 +10,6 @@
 
 // optional:
 
-// - BufferGeometry
 // - Implement bleed clip;
 // - Implement geometry occlusion.
 
@@ -64,6 +63,8 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 	// internals
 	//
 
+	var meshInfo = fromBufferGeometry( mesh.geometry );
+
 	var scope = this;
 
 	var verticesDict;
@@ -115,7 +116,7 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 
 		var cursorTexture = new THREE.Texture( undefined, THREE.UVMapping, THREE.MirroredRepeatWrapping, THREE.MirroredRepeatWrapping );
 		var cursorMaterial = new THREE.MeshBasicMaterial( { map: cursorTexture, transparent: true } );
-		var cursorGeometry = new THREE.PlaneBufferGeometry( cursorSize, cursorSize, 1, 1 );
+		var cursorGeometry = new THREE.PlaneGeometry( cursorSize, cursorSize, 1, 1 );
 
 		scope.cursor = new THREE.Mesh( cursorGeometry, cursorMaterial );
 		scope.cursor.position.copy( scope.ortho.position );
@@ -150,9 +151,75 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 	} ();
 
 	function verticesReset() {
-		verticesDict = Array( scope.mesh.geometry.vertices.length ).fill( undefined );
+		verticesDict = Array( meshInfo.vertices.length ).fill( undefined );
 		cameraPosition.copy( scope.camera.position );
 		cameraUpdated = false;
+	}
+
+	// reduced version of https://github.com/mrdoob/three.js/blob/r128/examples/js/deprecated/Geometry.js#L142
+	function fromBufferGeometry( geometry ) {
+		const scope = {
+			vertices: [], faces: [], faceVertexUvs: [[]]
+		};
+
+		const index = geometry.index !== null ? geometry.index : undefined;
+		const attributes = geometry.attributes;
+		const position = attributes.position;
+		const uv = attributes.uv;
+
+		for ( let i = 0; i < position.count; i ++ ) {
+			scope.vertices.push( new THREE.Vector3().fromBufferAttribute( position, i ) );
+		}
+
+		// face normal computation was originally performed
+		// in computeFaceNormals(), inlined here for brevity
+		const cb = new THREE.Vector3(), ab = new THREE.Vector3();
+
+		function addFace( a, b, c, materialIndex ) {
+			const vA = scope.vertices[ a ];
+			const vB = scope.vertices[ b ];
+			const vC = scope.vertices[ c ];
+			cb.subVectors( vC, vB );
+			ab.subVectors( vA, vB );
+			cb.cross( ab );
+			cb.normalize();
+
+			const face = { a, b, c, materialIndex, normal: cb.clone() };
+			scope.faces.push( face );
+
+			if ( uv !== undefined ) {
+				scope.faceVertexUvs[ 0 ].push( [ new THREE.Vector2().fromBufferAttribute( uv, a ), new THREE.Vector2().fromBufferAttribute( uv, b ), new THREE.Vector2().fromBufferAttribute( uv, c ) ] );
+			}
+		}
+
+		const groups = geometry.groups;
+		if ( groups.length > 0 ) {
+			for ( let i = 0; i < groups.length; i ++ ) {
+				const group = groups[ i ];
+				const start = group.start;
+				const count = group.count;
+
+				for ( let j = start, jl = start + count; j < jl; j += 3 ) {
+					if ( index !== undefined ) {
+						addFace( index.getX( j ), index.getX( j + 1 ), index.getX( j + 2 ), group.materialIndex );
+					} else {
+						addFace( j, j + 1, j + 2, group.materialIndex );
+					}
+				}
+			}
+		} else {
+			if ( index !== undefined ) {
+				for ( let i = 0; i < index.count; i += 3 ) {
+					addFace( index.getX( i ), index.getX( i + 1 ), index.getX( i + 2 ) );
+				}
+			} else {
+				for ( let i = 0; i < position.count; i += 3 ) {
+					addFace( i, i + 1, i + 2 );
+				}
+			}
+		}
+
+		return scope;
 	}
 
 	// canvas-functions
@@ -225,7 +292,7 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 
 		if ( verticesDict[ vertexID ] ) return verticesDict[ vertexID ].clone().sub( scope.reference );
 
-		verticesDict[ vertexID ] = calculateClipVertex( scope.mesh.geometry.vertices[ vertexID ] );
+		verticesDict[ vertexID ] = calculateClipVertex( meshInfo.vertices[ vertexID ] );
 
 		return verticesDict[ vertexID ];
 
@@ -290,9 +357,9 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 		var vC = new THREE.Vector3();
 		var origin = new THREE.Vector3().setFromMatrixPosition( scope.camera.matrixWorld );
 
-		var faces = scope.mesh.geometry.faces;
-		var vertices = scope.mesh.geometry.vertices;
-		var uvs = scope.mesh.geometry.faceVertexUvs[0];
+		var faces = meshInfo.faces;
+		var vertices = meshInfo.vertices;
+		var uvs = meshInfo.faceVertexUvs[0];
 
 		// set clip-space.
 		var min = new THREE.Vector3( - cursorUnits, - cursorUnits*aspect, - 0.1 );
