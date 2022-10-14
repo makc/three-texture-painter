@@ -85,26 +85,33 @@ THREE.TexturePainter = function ( renderer, camera, mesh, src ) {
 
 		scope.ctx = scope.canvas.getContext( "2d" );
 
-		scope.texture = scope.mesh.material.map || new THREE.Texture( undefined, THREE.UVMapping );
-		scope.texture.image = scope.canvas;
+		scope.texture = new THREE.Texture( scope.canvas, THREE.UVMapping, THREE.MirroredRepeatWrapping, THREE.MirroredRepeatWrapping );
+		scope.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-		scope.radius = scope.canvas.width * cursorUnits;
+		scope.bg = scope.mesh.material.map?.image;
 
-		scope.bg = document.createElement( "img" );
-		scope.bg.crossOrigin = '';
+		var whenBGReady = function () {
 
-		scope.bg.addEventListener( "load", function () {
-
-			scope.canvas.width = scope.bg.naturalWidth;
-			scope.canvas.height = scope.bg.naturalHeight;
+			scope.canvas.width = scope.bg.width;
+			scope.canvas.height = scope.bg.height;
 
 			scope.ctx.drawImage( scope.bg, 0, 0 );
 			scope.texture.needsUpdate = true;
 
-		}, false );
+		};
 
-		if ( src ) scope.bg.src = src;
-		else scope.bg.src = "textures/UV_Grid_Sm.jpg";
+		if ( scope.bg ) whenBGReady();
+		else {
+			// TextureLoader makes our life hard by witholding
+			// image reference until it is fully loaded, so...
+			Object.defineProperty( scope.mesh.material.map || {}, "image", {
+				set: function( image ) {
+					scope.bg = image; whenBGReady();
+				}
+			});
+		}
+
+		scope.mesh.material.map = scope.texture;
 
 		// cursor initialization
 		scope.scene = new THREE.Scene();
